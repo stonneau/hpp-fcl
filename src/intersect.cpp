@@ -913,7 +913,7 @@ T_Point computeIntersection(const T_Point& sub, const T_Point& clip)
                       << *edge << "\n  Edge B" << *(edge+1)
                       << "\n point S" << *S << "is left S " << dirS <<
                          "\n point E" << *E << "is left E " << dirE << std::endl;*/
-            if(dirE >0)
+            if(dirE >=0)
             {
                 if(dirS<0)
                 {
@@ -924,7 +924,7 @@ T_Point computeIntersection(const T_Point& sub, const T_Point& clip)
                 outputList.push_back(*E);
                 /* STUstd::cout << "insert E" << *E << std::endl;*/
             }
-            else if(dirS >0)
+            else if(dirS >=0)
             {
                 outputList.push_back(lineSect(*S, *E, *edge, *(edge+1)));
                 /* STUstd::cout << "Section SE AB" <<  lineSect(*S, *E, *edge, *(edge+1))
