@@ -47,147 +47,6 @@
 
 using namespace fcl;
 
-bool checkBoundingBox(const Vec3f& min, const Vec3f& max,
-                      const Vec3f& point, double margin = 1e-12)
-{
-  for (std::size_t i = 0u; i < 3u; ++i)
-  {
-    if (min[i] - margin > point[i] || point[i] > max[i] + margin)
-      return false;
-  }
-
-  return true;
-}
-
-/*BOOST_AUTO_TEST_CASE(collision_meshmesh_contactpoint_on_surface)
-{
-  const Transform3f identity;
-  Transform3f pose;
-
-  Box s1(1, 1, 1);
-  Box s2(0.5, 0.5, 0.5);
-
-  BVHModel<AABB> s1_aabb;
-  BVHModel<AABB> s2_aabb;
-  BVHModel<OBB> s1_obb;
-  BVHModel<OBB> s2_obb;
-  BVHModel<RSS> s1_rss;
-  BVHModel<RSS> s2_rss;
-  BVHModel<OBBRSS> s1_obbrss;
-  BVHModel<OBBRSS> s2_obbrss;
-
-  generateBVHModel(s1_aabb, s1, identity);
-  generateBVHModel(s2_aabb, s2, identity);
-  generateBVHModel(s1_obb, s1, identity);
-  generateBVHModel(s2_obb, s2, identity);
-  generateBVHModel(s1_rss, s1, identity);
-  generateBVHModel(s2_rss, s2, identity);
-  generateBVHModel(s1_obbrss, s1, identity);
-  generateBVHModel(s2_obbrss, s2, identity);
-
-  CollisionRequest request(1e+3, true);
-
-  CollisionResult result;
-
-  //----------------------------------------------------------------------------
-  // Case1: s2 is completely inside of s1.
-  //
-  // Primitive collision returns the maximum number of contact points, 4,
-  // whereas mesh collision returns no contact.
-  //----------------------------------------------------------------------------
-
-  result.clear();
-  //TODO
-  //collide(&s1, identity, &s2, identity, request, result);
-  //BOOST_CHECK_EQUAL(result.numContacts(), 4);  // maximum contact number of box-box
-
-  //----------------------------------------------------------------------------
-  // Case2: The left side (-y axis) of s2 touching the right side (+y axis) of
-  // s1. The intersection is a face where the size is the same with the face of
-  // s2 (0.5 x 0.5).
-  //----------------------------------------------------------------------------
-
-  pose.setTranslation(Vec3f(0, 0.75, 0));
-
-  Vec3f min(-0.25, 0.5, -0.25);
-  Vec3f max(0.25, 0.5, 0.25);
-
-  result.clear();
-  collide(&s1, identity, &s2, pose, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 4);
-  for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    const bool result = checkBoundingBox(min, max, contact.pos);
-
-    BOOST_CHECK(result);
-    if (!result)
-      std::cout << "contact point: " << contact.pos << "\n";
-  }
-
-  result.clear();
-  collide(&s1_aabb, identity, &s2_aabb, pose, request, result);
-  BOOST_CHECK(result.numContacts() > 4);
-  for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    const bool result = checkBoundingBox(min, max, contact.pos);
-
-    BOOST_CHECK(result);
-    if (!result)
-      std::cout << "aabb contact point: " << contact.pos << "\n";
-  }
-
-  result.clear();
-  collide(&s1_obb, identity, &s2_obb, pose, request, result);
-  BOOST_CHECK(result.numContacts() > 4);
-  for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    const bool result = checkBoundingBox(min, max, contact.pos);
-
-    BOOST_CHECK(result);
-    if (!result)
-      std::cout << "obb contact point: " << contact.pos << "\n";
-  }
-
-  result.clear();
-  collide(&s1_rss, identity, &s2_rss, pose, request, result);
-  BOOST_CHECK(result.numContacts() > 4);
-  for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    const bool result = checkBoundingBox(min, max, contact.pos);
-
-    BOOST_CHECK(result);
-    if (!result)
-      std::cout << "rss contact point: " << contact.pos << "\n";
-  }
-
-  result.clear();
-  collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
-  BOOST_CHECK(result.numContacts() > 4);
-  for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    const bool result = checkBoundingBox(min, max, contact.pos);
-
-    BOOST_CHECK(result);
-    if (!result)
-      std::cout << "obbrss contact point: " << contact.pos << "\n";
-  }
-}*/
-
-namespace
-{
-struct ComparePoint
-{
-    const fcl::Vec3f& pos;
-    explicit ComparePoint(const Vec3f& pos) : pos(pos) {}
-    bool operator()(const Vec3f& c) const { return pos.equal(c); }
-};
-}
-
 BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
 {
   const Transform3f identity;
@@ -213,14 +72,34 @@ BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
   // s2 (0.5 x 0.5).
   //----------------------------------------------------------------------------
   pose.setTranslation(Vec3f(0, 0.75, 0));
-  Vec3f min(-0.25, 0.5, -0.25);
-  Vec3f max(0.25, 0.5, 0.25);
 
   result.clear();resultFilter.clear();
   collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
   collide(&s1_obbrss, identity, &s2_obbrss, pose, requestFilter, resultFilter);
   BOOST_CHECK(resultFilter.numContacts() == 5);
   BOOST_CHECK(resultFilter.numContacts() < result.numContacts());
+}
+
+namespace
+{
+    struct ComparePoint
+    {
+        const fcl::Vec3f& pos;
+        explicit ComparePoint(const Vec3f& pos) : pos(pos) {}
+        bool operator()(const Vec3f& c) const { return pos.equal(c); }
+    };
+    void checkExpectedValue(const CollisionResult& result, const std::vector<Vec3f> points)
+    {
+        for (std::size_t i = 0u; i < result.numContacts(); ++i)
+        {
+          const fcl::Contact& contact = result.getContact(i);
+          BOOST_CHECK(std::find_if(points.begin(),points.end(),ComparePoint(contact.pos)) != points.end());
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(collision_meshmesh_contactpoint_on_surface)
+{
 
   std::vector<Vec3f> points;
   points.push_back(Vec3f(-0.25, 0.5, -0.25));
@@ -228,9 +107,74 @@ BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
   points.push_back(Vec3f(0.25, 0.5, -0.25));
   points.push_back(Vec3f(0, 0.5, 0));
   points.push_back(Vec3f(0.25, 0.5, 0.25));
-  for (std::size_t i = 0u; i < resultFilter.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = resultFilter.getContact(i);
-    BOOST_CHECK(std::find_if(points.begin(),points.end(),ComparePoint(contact.pos)) != points.end());
-  }
+
+
+  const Transform3f identity;
+  Transform3f pose;
+
+  Box s1(1, 1, 1);
+  Box s2(0.5, 0.5, 0.5);
+
+  BVHModel<AABB> s1_aabb;
+  BVHModel<AABB> s2_aabb;
+  BVHModel<OBB> s1_obb;
+  BVHModel<OBB> s2_obb;
+  BVHModel<RSS> s1_rss;
+  BVHModel<RSS> s2_rss;
+  BVHModel<OBBRSS> s1_obbrss;
+  BVHModel<OBBRSS> s2_obbrss;
+
+  generateBVHModel(s1_aabb, s1, identity);
+  generateBVHModel(s2_aabb, s2, identity);
+  generateBVHModel(s1_obb, s1, identity);
+  generateBVHModel(s2_obb, s2, identity);
+  generateBVHModel(s1_rss, s1, identity);
+  generateBVHModel(s2_rss, s2, identity);
+  generateBVHModel(s1_obbrss, s1, identity);
+  generateBVHModel(s2_obbrss, s2, identity);
+
+  CollisionRequest request(1e+3, true);
+  request.filter_contact_points = true;
+
+  CollisionResult result;
+
+  //----------------------------------------------------------------------------
+  // Case1: s2 is completely inside of s1.
+  //
+  // Primitive collision returns the maximum number of contact points, 4,
+  // whereas mesh collision returns no contact.
+  //----------------------------------------------------------------------------
+
+  //TODO
+  //collide(&s1, identity, &s2, identity, request, result);
+  //BOOST_CHECK_EQUAL(result.numContacts(), 4);  // maximum contact number of box-box
+  //result.clear();
+
+  //----------------------------------------------------------------------------
+  // Case2: The left side (-y axis) of s2 touching the right side (+y axis) of
+  // s1. The intersection is a face where the size is the same with the face of
+  // s2 (0.5 x 0.5).
+  //----------------------------------------------------------------------------
+
+  pose.setTranslation(Vec3f(0, 0.75, 0));
+
+  //TODO
+  /*collide(&s1, identity, &s2, pose, request, result);
+  checkExpectedValue(result,points);*/
+
+  result.clear();
+  collide(&s1_aabb, identity, &s2_aabb, pose, request, result);
+  checkExpectedValue(result,points);
+
+  result.clear();
+  collide(&s1_obb, identity, &s2_obb, pose, request, result);
+  checkExpectedValue(result,points);
+
+  result.clear();
+  collide(&s1_rss, identity, &s2_rss, pose, request, result);
+  checkExpectedValue(result,points);
+
+  result.clear();
+  collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
+  checkExpectedValue(result,points);
 }
