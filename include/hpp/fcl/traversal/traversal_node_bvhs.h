@@ -220,7 +220,7 @@ public:
     
           for(unsigned int i = 0; i < n_contacts; ++i)
           {
-            this->result->addContact(Contact(this->model1, this->model2, primitive_id1, primitive_id2, contacts[i], normal, penetration));
+            this->result->addContact(Contact(this->model1, this->model2, primitive_id1, primitive_id2, contacts[i], normal, penetration),this->request.filter_contact_points);
           }
         }
       }

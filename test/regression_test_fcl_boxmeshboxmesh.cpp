@@ -59,7 +59,7 @@ bool checkBoundingBox(const Vec3f& min, const Vec3f& max,
   return true;
 }
 
-BOOST_AUTO_TEST_CASE(collision_boxmeshboxmesh_contactpoint)
+/*BOOST_AUTO_TEST_CASE(collision_meshmesh_contactpoint_on_surface)
 {
   const Transform3f identity;
   Transform3f pose;
@@ -97,25 +97,9 @@ BOOST_AUTO_TEST_CASE(collision_boxmeshboxmesh_contactpoint)
   //----------------------------------------------------------------------------
 
   result.clear();
-  /*TODO*/
-  collide(&s1, identity, &s2, identity, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 4);  // maximum contact number of box-box
-
-  result.clear();
-  collide(&s1_aabb, identity, &s2_aabb, identity, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 0);
-
-  result.clear();
-  collide(&s1_obb, identity, &s2_obb, identity, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 0);
-
-  result.clear();
-  collide(&s1_rss, identity, &s2_rss, identity, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 0);
-
-  result.clear();
-  collide(&s1_obbrss, identity, &s2_obbrss, identity, request, result);
-  BOOST_CHECK_EQUAL(result.numContacts(), 0);
+  //TODO
+  //collide(&s1, identity, &s2, identity, request, result);
+  //BOOST_CHECK_EQUAL(result.numContacts(), 4);  // maximum contact number of box-box
 
   //----------------------------------------------------------------------------
   // Case2: The left side (-y axis) of s2 touching the right side (+y axis) of
@@ -128,7 +112,7 @@ BOOST_AUTO_TEST_CASE(collision_boxmeshboxmesh_contactpoint)
   Vec3f min(-0.25, 0.5, -0.25);
   Vec3f max(0.25, 0.5, 0.25);
 
-  /*result.clear();
+  result.clear();
   collide(&s1, identity, &s2, pose, request, result);
   BOOST_CHECK_EQUAL(result.numContacts(), 4);
   for (std::size_t i = 0u; i < result.numContacts(); ++i)
@@ -178,7 +162,7 @@ BOOST_AUTO_TEST_CASE(collision_boxmeshboxmesh_contactpoint)
     BOOST_CHECK(result);
     if (!result)
       std::cout << "rss contact point: " << contact.pos << "\n";
-  }*/
+  }
 
   result.clear();
   collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
@@ -186,11 +170,57 @@ BOOST_AUTO_TEST_CASE(collision_boxmeshboxmesh_contactpoint)
   for (std::size_t i = 0u; i < result.numContacts(); ++i)
   {
     const fcl::Contact& contact = result.getContact(i);
-    std::cout << contact.pos << std::endl;
     const bool result = checkBoundingBox(min, max, contact.pos);
 
     BOOST_CHECK(result);
     if (!result)
       std::cout << "obbrss contact point: " << contact.pos << "\n";
   }
+}*/
+
+BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
+{
+  const Transform3f identity;
+  Transform3f pose;
+
+  Box s1(1, 1, 1);
+  Box s2(0.5, 0.5, 0.5);
+  BVHModel<OBBRSS> s1_obbrss;
+  BVHModel<OBBRSS> s2_obbrss;
+
+  generateBVHModel(s1_obbrss, s1, identity);
+  generateBVHModel(s2_obbrss, s2, identity);
+
+  CollisionRequest request(1e+3, true);
+  CollisionRequest requestFilter(1e+3, true);
+  requestFilter.filter_contact_points = true;
+
+  CollisionResult result, resultFilter;
+
+  //----------------------------------------------------------------------------
+  // Case2: The left side (-y axis) of s2 touching the right side (+y axis) of
+  // s1. The intersection is a face where the size is the same with the face of
+  // s2 (0.5 x 0.5).
+  //----------------------------------------------------------------------------
+  pose.setTranslation(Vec3f(0, 0.75, 0));
+  Vec3f min(-0.25, 0.5, -0.25);
+  Vec3f max(0.25, 0.5, 0.25);
+
+  result.clear();resultFilter.clear();
+  collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
+  collide(&s1_obbrss, identity, &s2_obbrss, pose, requestFilter, resultFilter);
+  BOOST_CHECK(resultFilter.numContacts() >= 4);
+  BOOST_CHECK(resultFilter.numContacts() < result.numContacts());
+  std::cout << "num points filtered" << resultFilter.numContacts() << std::endl;
+  for (std::size_t i = 0u; i < resultFilter.numContacts(); ++i)
+  {
+    const fcl::Contact& contact = resultFilter.getContact(i);
+    std::cout << "filter contact pos " << contact.pos << std::endl;
+  }
+
+  /*for (std::size_t i = 0u; i < result.numContacts(); ++i)
+  {
+    const fcl::Contact& contact = result.getContact(i);
+    std::cout << "unfiltered contact pos " << contact.pos << std::endl;
+  }*/
 }

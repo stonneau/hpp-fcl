@@ -228,7 +228,7 @@ public:
         {
           is_intersect = true;
           if(this->request.num_max_contacts > this->result->numContacts())
-            this->result->addContact(Contact(this->model1, this->model2, primitive_id, Contact::NONE, contactp, -normal, penetration));
+            this->result->addContact(Contact(this->model1, this->model2, primitive_id, Contact::NONE, contactp, -normal, penetration),this->request.filter_contact_points);
         }
       }
 
