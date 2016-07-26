@@ -92,6 +92,11 @@ set(${LIBRARY_NAME}_SOURCES
   collision_func_matrix.cpp
   )
 
+#Adding headers to sources for visibility in IDE
+FOREACH(infileName ${${PROJECT_NAME}_HEADERS})
+    LIST(APPEND  ${LIBRARY_NAME}_SOURCES ${PROJECT_SOURCE_DIR}/${infileName})
+ENDFOREACH(infileName)
+
 # Declare boost include directories
 include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
