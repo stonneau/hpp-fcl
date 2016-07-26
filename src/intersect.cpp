@@ -1082,9 +1082,17 @@ std::pair<FCL_REAL, FCL_REAL> lineInterval(Vec3f* tri1,const Vec3f& D, const Vec
     // side of the line
     std::size_t op[3];
     oppositePoint(distTri1Plane2,op);
+
     std::size_t s0 = op[0], s2 = op[2], op1 = op[1];
+/* STUstd::cout << "opposite point " << op1 << " " << tri1[op1] << std::endl;
+std::cout << "NON opposite point " << s0 << " " << tri1[s0]<< std::endl;
+std::cout << "NON opposite point " << s2 << " " << tri1[s2]<< std::endl;
+std::cout << "Line 1 " << tri1[op1] << " " << tri1[s0]<< std::endl;
+std::cout << "Line 2 " << tri1[op1] << " " << tri1[s2]<< std::endl;*/
     t1 = p1[s0] + (p1[op1] - p1[s0]) * (distTri1Plane2[s0]) / (distTri1Plane2[s0] - distTri1Plane2[op1]);
     t2 = p1[s2] + (p1[op1] - p1[s2]) * (distTri1Plane2[s2]) / (distTri1Plane2[s2] - distTri1Plane2[op1]);
+/* STUstd::cout << "does this work " << o + D*t1 << std::endl;
+std::cout << "does this work " << o + D*t2 << std::endl;*/
     if(t1 < t2)
         return std::make_pair(t1,t2);
     else
@@ -1092,23 +1100,71 @@ std::pair<FCL_REAL, FCL_REAL> lineInterval(Vec3f* tri1,const Vec3f& D, const Vec
 }
 
 Vec3f computeIntersectionPoint(const Vec3f& n1, const Vec3f& n2,
-                               const FCL_REAL& d1, const FCL_REAL& d2, const fcl::Vec3f& D)
+                               const FCL_REAL& d1, const FCL_REAL& d2, const fcl::Vec3f& D,
+                               const fcl::Vec3f* tri1, const fcl::Vec3f* tri2)
 {
+// if D has two null component, any value for those two components is valid ?
     Vec3f res;
     // find solution by setting z = 0
     if(D[2] != 0)
     {
         res[2] = 0;
-        res[1] = ((n1[0]*d2) / n2[0] - d1) / (n1[1] - (n1[0] * n2[1])/(n2[0]));
-        res[0] = -(n1[1]*res[1] + d1)/n1[0];
+        if(n1[0] == 0)
+        {
+            assert(n2[0]!=0);
+            res[1] = ((n1[0]*d2) / n2[0] - d1) / (n1[1] - (n1[0] * n2[1])/(n2[0]));
+            res[0] = -(n2[1]*res[1] + d2)/n2[0];
+        }
+        else
+        {
+            assert(n1[0]!=0);
+            res[1] = ((n2[0]*d1) / n1[0] - d2) / (n2[1] - (n2[0] * n1[1])/(n1[0]));
+            res[0] = -(n1[1]*res[1] + d1)/n1[0];
+        }
     }
     // set y = 0
-    else
+    else if(D[1] != 0)
     {
-        res[1] = 0;
-        res[2] = ((n1[0]*d2) / n2[0] - d1) / (n1[2] - (n1[0] * n2[2])/(n2[0]));
-        res[0] = -(n1[2]*res[2] + d1)/n1[0];
+        res[1] = 0;        
+        if(n1[0] == 0)
+        {
+            assert(n2[0]!=0);
+            res[2] = ((n1[0]*d2) / n2[0] - d1) / (n1[2] - (n1[0] * n2[2])/(n2[0]));
+            res[0] = -(n2[2]*res[2] + d2)/n2[0];
+        }
+        else
+        {
+            assert(n1[0]!=0);
+            res[2] = ((n2[0]*d1) / n2[0] - d2) / (n2[2] - (n2[0] * n1[2])/(n1[0]));
+            res[0] = -(n1[2]*res[2] + d1)/n1[0];
+        }
     }
+    else // y and z are constrained
+    {
+        res[0] = 0;
+
+        if(n1[1] == 0)
+        {
+            assert(n2[1]!=0);
+            res[2] = ((n1[1]*d2) / n2[1] - d1) / (n1[2] - (n1[1] * n2[2])/(n2[1]));
+            res[1] = -(n2[2]*res[2]+d2)/n2[1];
+        }
+        else
+        {
+            assert(n1[1]!=0);
+            res[2] = ((n2[1]*d1) / n1[1] - d2) / (n2[2] - (n2[1] * n1[2])/(n1[1]));
+            res[1] = -(n1[2]*res[2]+d1)/n1[1];
+        }
+    }
+/* STUstd::cout << "intersection point " << res << std::endl;
+for(int i=0; i<3; ++i)
+{
+    std::cout << "tri1 point " << tri1[i] << std::endl;
+}
+for(int i=0; i<3; ++i)
+{
+    std::cout << "tri2 point " << tri2[i] << std::endl;
+}*/
     return res;
 }
 
@@ -1119,6 +1175,7 @@ void computeTriangleIntersection(Vec3f* tri1, Vec3f* tri2, const Vec3f& n1, cons
 {
     const FCL_REAL d1 = -t1, d2 = -t2;
     Vec3f D = n1.cross(n2);
+    D.normalize();
     // find origin of line
     // signed distance of vertices of tri1 to plane of tri2  is computed
     // by inserting them into the plane equation
@@ -1131,7 +1188,8 @@ void computeTriangleIntersection(Vec3f* tri1, Vec3f* tri2, const Vec3f& n1, cons
     /* STUstd::cout <<  "distTri1Plane2" << distTri1Plane2 << std::endl;
     std::cout <<  "distTri2Plane1" << distTri2Plane1 << std::endl;
     std::cout <<  "n1" << n1 << std::endl;
-    std::cout <<  "n2" << n2 << std::endl;*/
+    std::cout <<  "n2" << n2 << std::endl;
+    std::cout << " D" << D << std::endl;*/
     if(!intersect)
     {
         //coplanar case ?
@@ -1145,7 +1203,7 @@ void computeTriangleIntersection(Vec3f* tri1, Vec3f* tri2, const Vec3f& n1, cons
         }
         return;
     }
-    if(!pointOnPlaneFound) o = computeIntersectionPoint(n1, n2, d1, d2, D);
+    if(!pointOnPlaneFound) o = computeIntersectionPoint(n1, n2, d1, d2, D, tri1, tri2);
     std::pair<FCL_REAL, FCL_REAL> int1 = lineInterval(tri1,D,o,distTri1Plane2);
     std::pair<FCL_REAL, FCL_REAL> int2 = lineInterval(tri2,D,o,distTri2Plane1);
     /* STUstd::cout << "o" << ";" << o << std::endl;
@@ -1153,15 +1211,23 @@ void computeTriangleIntersection(Vec3f* tri1, Vec3f* tri2, const Vec3f& n1, cons
     std::cout << "distance2" << ";" << distTri2Plane1 << std::endl;
     std::cout << int1.first << ";" << int1.second << std::endl;
     std::cout << int2.first << ";" << int2.second << std::endl;*/
-    assert(int1.first <= int2.second && int2.first <= int1.second);
-    //intersection interval is given by
-    FCL_REAL t_min = std::max(int1.first, int2.first);
-    FCL_REAL t_max = std::min(int1.second, int2.second);
-    *num_contact_points =2;
-    contact_points[0] = o + D*t_min;
-    contact_points[1] = o + D*t_max;
-    /* STUstd::cout << "cpoint 0" << contact_points[0] << std::endl;
-    std::cout << "cpoint 1" << contact_points[1] << std::endl;*/
+    /*if(std::abs (int1.second - int2.first ) <= epsilon)
+    {
+        *num_contact_points =1;
+        contact_points[0] = o + D*int1.second;
+    }*/
+    //else
+    {
+        assert((int1.first - int2.second) <= epsilon && (int2.first - int1.second) <= epsilon);
+        //intersection interval is given by
+        FCL_REAL t_min = std::max(int1.first, int2.first);
+        FCL_REAL t_max = std::min(int1.second, int2.second);
+        *num_contact_points =2;
+        contact_points[0] = o + D*t_min;
+        contact_points[1] = o + D*t_max;
+        /* STUstd::cout << "cpoint 0" << contact_points[0] << std::endl;
+        std::cout << "cpoint 1" << contact_points[1] << std::endl;*/
+    }
 }
 }
 
