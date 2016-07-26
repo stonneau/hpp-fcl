@@ -178,6 +178,16 @@ bool checkBoundingBox(const Vec3f& min, const Vec3f& max,
   }
 }*/
 
+namespace
+{
+struct ComparePoint
+{
+    const fcl::Vec3f& pos;
+    explicit ComparePoint(const Vec3f& pos) : pos(pos) {}
+    bool operator()(const Vec3f& c) const { return pos.equal(c); }
+};
+}
+
 BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
 {
   const Transform3f identity;
@@ -209,18 +219,18 @@ BOOST_AUTO_TEST_CASE(collision_filter_redundant_contactpoint)
   result.clear();resultFilter.clear();
   collide(&s1_obbrss, identity, &s2_obbrss, pose, request, result);
   collide(&s1_obbrss, identity, &s2_obbrss, pose, requestFilter, resultFilter);
-  BOOST_CHECK(resultFilter.numContacts() >= 4);
+  BOOST_CHECK(resultFilter.numContacts() == 5);
   BOOST_CHECK(resultFilter.numContacts() < result.numContacts());
-  std::cout << "num points filtered" << resultFilter.numContacts() << std::endl;
+
+  std::vector<Vec3f> points;
+  points.push_back(Vec3f(-0.25, 0.5, -0.25));
+  points.push_back(Vec3f(-0.25, 0.5, 0.25));
+  points.push_back(Vec3f(0.25, 0.5, -0.25));
+  points.push_back(Vec3f(0, 0.5, 0));
+  points.push_back(Vec3f(0.25, 0.5, 0.25));
   for (std::size_t i = 0u; i < resultFilter.numContacts(); ++i)
   {
     const fcl::Contact& contact = resultFilter.getContact(i);
-    std::cout << "filter contact pos " << contact.pos << std::endl;
+    BOOST_CHECK(std::find_if(points.begin(),points.end(),ComparePoint(contact.pos)) != points.end());
   }
-
-  /*for (std::size_t i = 0u; i < result.numContacts(); ++i)
-  {
-    const fcl::Contact& contact = result.getContact(i);
-    std::cout << "unfiltered contact pos " << contact.pos << std::endl;
-  }*/
 }
