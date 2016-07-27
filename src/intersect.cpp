@@ -1135,7 +1135,7 @@ Vec3f computeIntersectionPoint(const Vec3f& n1, const Vec3f& n2,
         else
         {
             assert(n1[0]!=0);
-            res[2] = ((n2[0]*d1) / n2[0] - d2) / (n2[2] - (n2[0] * n1[2])/(n1[0]));
+            res[2] = ((n2[0]*d1) / n1[0] - d2) / (n2[2] - (n2[0] * n1[2])/(n1[0]));
             res[0] = -(n1[2]*res[2] + d1)/n1[0];
         }
     }
