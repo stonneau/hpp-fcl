@@ -48,6 +48,7 @@
 #include <vector>
 #include <set>
 #include <limits>
+#include <algorithm>
 
 
 namespace fcl
@@ -119,6 +120,17 @@ struct Contact
       return b2 < other.b2;
     return b1 < other.b1;
   }
+
+  bool operator == (const Contact& other) const
+  {
+    return o1 == other.o1
+            && o2 == other.o2
+            && b1 == other.b1
+            && b2 == other.b2
+            && normal == other.normal
+            && pos == other.pos
+            && penetration_depth == other.penetration_depth;
+  }
 };
 
 /// @brief Cost source describes an area with a cost. The area is described by an AABB region.
@@ -169,6 +181,14 @@ struct CostSource
  
     return false;
   }
+
+  bool operator == (const CostSource& other) const
+  {
+    return aabb_min == other.aabb_min
+            && aabb_max == other.aabb_max
+            && cost_density == other.cost_density
+            && total_cost == other.total_cost;
+  }
 };
 
 struct CollisionResult;
@@ -203,26 +223,39 @@ struct CollisionRequest
   /// @brief the gjk intial guess set by user
   Vec3f cached_gjk_guess;
 
+  /// @brief if true contact positions are only added once
+  bool filter_contact_points;
+
   CollisionRequest(size_t num_max_contacts_ = 1,
                    bool enable_contact_ = false,
 		   bool enable_distance_lower_bound_ = false,
                    size_t num_max_cost_sources_ = 1,
                    bool enable_cost_ = false,
                    bool use_approximate_cost_ = true,
-                   GJKSolverType gjk_solver_type_ = GST_LIBCCD) :
+                   GJKSolverType gjk_solver_type_ = GST_LIBCCD,
+                   bool filter_contact_points = false) :
   num_max_contacts(num_max_contacts_),
     enable_contact(enable_contact_),
     enable_distance_lower_bound (enable_distance_lower_bound_),
     num_max_cost_sources(num_max_cost_sources_),
     enable_cost(enable_cost_),
     use_approximate_cost(use_approximate_cost_),
-    gjk_solver_type(gjk_solver_type_)
+    gjk_solver_type(gjk_solver_type_),
+    filter_contact_points(enable_contact_ && filter_contact_points)
   {
     enable_cached_gjk_guess = false;
     cached_gjk_guess = Vec3f(1, 0, 0);
   }
 
   bool isSatisfied(const CollisionResult& result) const;
+};
+
+/// @brief ContactPosFilter
+struct ContactPosFilter
+{
+  const fcl::Vec3f& pos;
+  explicit ContactPosFilter(const Vec3f& pos) : pos(pos) {}
+  bool operator()(const Contact& c) const { return pos.equal(c.pos); }
 };
 
 /// @brief collision result
@@ -249,9 +282,13 @@ public:
 
 
   /// @brief add one contact into result structure
-  inline void addContact(const Contact& c) 
+  inline void addContact(const Contact& c, bool filterPoints = false)
   {
-    contacts.push_back(c);
+    if((!filterPoints) ||
+        std::find_if(contacts.begin(), contacts.end(),ContactPosFilter(c.pos))==contacts.end())
+    {
+        contacts.push_back(c);
+    }
   }
 
   /// @brief add one cost source into result structure
@@ -260,6 +297,14 @@ public:
     cost_sources.insert(c);
     while (cost_sources.size() > num_max_cost_sources)
       cost_sources.erase(--cost_sources.end());
+  }
+
+  /// @brief whether two CollisionResult are the same or not
+  inline bool operator ==(const CollisionResult& other) const
+  {
+    return contacts == other.contacts 
+            && cost_sources == other.cost_sources
+            && distance_lower_bound == other.distance_lower_bound;
   }
 
   /// @brief return binary collision result

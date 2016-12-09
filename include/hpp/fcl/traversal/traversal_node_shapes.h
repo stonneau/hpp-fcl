@@ -90,7 +90,9 @@ public:
         {
           is_collision = true;
           if(request.num_max_contacts > result->numContacts())
-            result->addContact(Contact(model1, model2, Contact::NONE, Contact::NONE, contact_point, normal, penetration_depth));
+          {
+            result->addContact(Contact(model1, model2, Contact::NONE, Contact::NONE, contact_point, normal, penetration_depth), request.filter_contact_points);
+          }
         }
       }
       else

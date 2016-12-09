@@ -100,7 +100,7 @@ static inline void meshCollisionOrientedNodeLeafTesting
       FCL_REAL penetration;
       Vec3f normal;
       unsigned int n_contacts;
-      Vec3f contacts[2];
+      Vec3f contacts[4];
 
       if(Intersect::intersect_Triangle(p1, p2, p3, q1, q2, q3,
                                        R, T,
@@ -116,7 +116,7 @@ static inline void meshCollisionOrientedNodeLeafTesting
         
         for(unsigned int i = 0; i < n_contacts; ++i)
         {
-          result.addContact(Contact(model1, model2, primitive_id1, primitive_id2, tf1.transform(contacts[i]), tf1.getQuatRotation().transform(normal), penetration));
+          result.addContact(Contact(model1, model2, primitive_id1, primitive_id2, tf1.transform(contacts[i]), tf1.getQuatRotation().transform(normal), penetration), request.filter_contact_points);
         }
       }
     }

@@ -721,7 +721,6 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
   return intersect_Triangle(P1, P2, P3, Q1_, Q2_, Q3_, contact_points, num_contact_points, penetration_depth, normal);
 }
 
-
 #if ODE_STYLE
 bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f& P3,
                                    const Vec3f& Q1, const Vec3f& Q2, const Vec3f& Q3,
@@ -807,6 +806,431 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
   return true;
 }
 #else
+
+
+namespace
+{
+const FCL_REAL epsilon = std::numeric_limits<FCL_REAL>::epsilon () * 100;
+
+Vec3f distanceTriangleVerticesToPlane(Vec3f* tri1,const Vec3f& n2, const FCL_REAL& d2, bool& intersect,
+                                      Vec3f& pointOnPlane, bool& pointOnPlaneFound)
+{
+    //numPointsOnPlane = 0;
+    FCL_REAL tmp_value;
+    Vec3f res;
+    for (std::size_t i =0; i < 3; ++i)
+    {
+        tmp_value = n2.dot(tri1[i]) + d2;
+        res[i] = tmp_value;
+        // signed distance of 0 means point is on plane
+        if(std::abs(tmp_value) < std::abs(epsilon))
+        {
+            //pointsOnPlane[numPointsOnPlane++] = tri1[i];
+            res[i] = 0;
+            if (!pointOnPlaneFound)
+            {
+                pointOnPlane = tri1[i];
+                pointOnPlaneFound = true;
+            }
+        }
+    }
+    // intersection with plane occurs only if there is a sign change in signed distance to it
+    intersect = intersect || (res[0] > 0) ^ (res[1] < 0) || (res[1] > 0) ^ (res[2] < 0) || (res[0] > 0) ^ (res[2] < 0);
+    return res;
+}
+
+/*******/
+typedef fcl::Vec3f Point;
+typedef std::vector<Point> T_Point;
+typedef T_Point::const_iterator CIT_Point;
+
+FCL_REAL isLeft(Point lA, Point lB, Point p2)
+{
+    FCL_REAL res = (lB[0] - lA[0]) * (p2[1] - lA[1]) - (p2[0] - lA[0]) * (lB[1] - lA[1]);
+    return (std::abs(res) < epsilon) ? 0 : res;
+}
+
+
+CIT_Point leftMost(const CIT_Point& pointsBegin, const CIT_Point& pointsEnd)
+{
+    CIT_Point current = pointsBegin +1;CIT_Point res = pointsBegin;
+    while(current!= pointsEnd)
+    {
+        if(current->operator[](0) < res->operator[](0))
+            res = current;
+        ++current;
+    }
+    return res;
+}
+
+CIT_Point leftMost(const CIT_Point& pointsBegin, const CIT_Point& pointsEnd, std::size_t& id)
+{
+    std::size_t tmp = 1; id =0;
+    CIT_Point current = pointsBegin +1;CIT_Point res = pointsBegin;
+    while(current!= pointsEnd)
+    {
+        if(current->operator[](0) < res->operator[](0))
+        {
+            res = current;
+            id = tmp;
+        }
+        ++tmp; ++current;
+    }
+    return res;
+}
+
+Point lineSect(const Point& p1, const Point& p2, const Point& p3, const Point& p4)
+{
+    Point res;
+    FCL_REAL x1 = p1[0], x2 = p2[0], x3 = p3[0], x4 = p4[0];
+    FCL_REAL y1 = p1[1], y2 = p2[1], y3 = p3[1], y4 = p4[1];
+    FCL_REAL d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    // Get the x and y
+    FCL_REAL pre = (x1*y2 - y1*x2), post = (x3*y4 - y3*x4);
+    FCL_REAL x = (pre * (x3 - x4) - (x1 - x2) * post) / d;
+    FCL_REAL y = (pre * (y3 - y4) - (y1 - y2) * post) / d;
+    // Return the point of intersection
+    res[0] = x;
+    res[1] = y;
+    return res;
+}
+
+T_Point computeIntersection(const T_Point& sub, const T_Point& clip)
+{
+    T_Point outputList, inputList;
+    CIT_Point S;
+    outputList = sub;
+    for(CIT_Point edge = clip.begin(); edge != clip.end()-1; ++edge)
+    {
+        inputList = outputList;
+        outputList.clear();
+        S = inputList.end()-1;
+        for(CIT_Point E = inputList.begin(); E != inputList.end(); ++E)
+        {
+            FCL_REAL dirE = isLeft(*edge, *(edge+1), *E);
+            FCL_REAL dirS = isLeft(*edge, *(edge+1), *S);
+            /* STUstd::cout << "is left Edge A"
+                      << *edge << "\n  Edge B" << *(edge+1)
+                      << "\n point S" << *S << "is left S " << dirS <<
+                         "\n point E" << *E << "is left E " << dirE << std::endl;*/
+            if(dirE >=0)
+            {
+                if(dirS<0)
+                {
+                    outputList.push_back(lineSect(*S, *E, *edge, *(edge+1)));
+                    /* STUstd::cout << "Section SE AB" <<  lineSect(*S, *E, *edge, *(edge+1))
+                              << std::endl;*/
+                }
+                outputList.push_back(*E);
+                /* STUstd::cout << "insert E" << *E << std::endl;*/
+            }
+            else if(dirS >=0)
+            {
+                outputList.push_back(lineSect(*S, *E, *edge, *(edge+1)));
+                /* STUstd::cout << "Section SE AB" <<  lineSect(*S, *E, *edge, *(edge+1))
+                          << std::endl;*/
+            }
+            S = E;
+        }
+    }
+    return outputList;
+}
+/******/
+
+fcl::Transform3f GetPlaneTransform(const Vec3f& n, const Vec3f& o, const Vec3f& pointOnPlane)
+{
+    Vec3f x, y, z; z = n;
+    z.normalize();
+    x= pointOnPlane - o; x.normalize();
+    y= z.cross(x); y.normalize();
+    Matrix3f rot;
+    for(int i =0; i < 3; ++i)
+    {
+        rot(i,0)=x[i];
+        rot(i,1)=y[i];
+        rot(i,2)=z[i];
+    }
+    return fcl::Transform3f (rot,o);
+}
+
+
+T_Point ProjectOnPlane(const fcl::Transform3f& tr, const Vec3f* tri)
+{
+    T_Point res, ordered;
+    for(int i = 0; i<3; ++i)
+    {
+        Vec3f val = tr.transform(tri[i]);
+        /* STUstd::cout << "val " << val << std::endl;
+        std::cout << "tri " << tri[i] << std::endl;*/
+        assert(std::abs(val[2]) < 0.00001);
+        res.push_back(val);
+    }
+    // now order counter clock wise
+    std::size_t id;
+    const Vec3f& lm = *leftMost(res.begin(),res.end(), id);
+    /* STUstd::cout << "lm " << lm << std::endl << id;
+    for(CIT_Point cit = res.begin(); cit != res.end(); ++cit)
+    {
+        std::cout << "res unordered " << *cit << std::endl;
+    }*/
+    ordered.push_back(lm);
+    if(isLeft(lm,res[(id+1)%3],res[(id+2)%3]) >= 0)
+    {
+        /* STUstd::cout << "id +1  " << (id+1)%3 << " " << res[(id+1)%3] << std::endl;
+        std::cout << "id +2  " << (id+2)%3 << " "<< res[(id+2)%3] << std::endl;*/
+            ordered.push_back(res[(id+1)%3]);
+            ordered.push_back(res[(id+2)%3]);
+    }
+    else
+    {
+        /* STUstd::cout << "id +2  " << (id+2)%3 << res[(id+2)%3] << std::endl;
+        std::cout << "id +1  " << (id+1)%3 << res[(id+1)%3] << std::endl;*/
+        //if(!ordered.back().equal(res[(id+2)%3]))
+            ordered.push_back(res[(id+2)%3]);
+        //if(!ordered.back().equal(res[(id+1)%3]) && !lm.equal(res[(id+1)%3]))
+            ordered.push_back(res[(id+1)%3]);
+    }
+    if(ordered.size()>2 && !ordered.back().equal(lm))
+        ordered.push_back(lm);
+    return ordered;
+}
+
+void clipTriangles(Vec3f* tri1, Vec3f* tri2,
+                   const Vec3f& n,
+                   unsigned int* num_contact_points,
+                   Vec3f* contactPoints)
+{
+    *num_contact_points = 0;
+    const fcl::Transform3f tr = GetPlaneTransform(n,tri1[0], tri1[1]);
+    fcl::Transform3f trinv(tr); trinv.inverse();
+    /* STUstd::cout << "tr 0 " << tr.getRotation() << "\n" << tr.getTranslation() << std::endl;
+    std::cout << "trinv 0" << trinv.getRotation() << "\n" << trinv.getTranslation() << std::endl;
+    std::cout << "rot" << trinv.transform(tri1[1]) << std::endl;
+    std::cout << "rotinv" << tr.transform(trinv.transform(tri1[1])) << std::endl;*/
+    T_Point subjectPolygon = ProjectOnPlane(trinv, tri1);
+    T_Point clipPolygon = ProjectOnPlane(trinv, tri2);
+
+    /* STUfor(CIT_Point cit = subjectPolygon.begin(); cit != subjectPolygon.end(); ++cit)
+    {
+        std::cout << "subjectPolygon " << *cit << std::endl;
+    }
+
+
+    for(CIT_Point cit = clipPolygon.begin(); cit != clipPolygon.end(); ++cit)
+    {
+        std::cout << "clipPolygon " << *cit << std::endl;
+    }*/
+    T_Point hull =  computeIntersection(subjectPolygon, clipPolygon);
+    /* STUstd::cout << "tr " << tr.getRotation() << "\n" << tr.getTranslation() << std::endl;
+    std::cout << "trinv " << trinv.getRotation() << "\n" << trinv.getTranslation() << std::endl;
+
+    std::cout << "rot" << trinv.transform(tri1[1]) << std::endl;
+    std::cout << "rotinv" << tr.transform(trinv.transform(tri1[1])) << std::endl;*/
+
+    /* STUfor(CIT_Point current = hull.begin(); current!= hull.end(); ++current)
+    {
+        std::cout << "intersection " << *current << std::endl;
+    }*/
+    if(!hull.empty())
+    {
+        unsigned int& id = *num_contact_points;
+        for(CIT_Point current = hull.begin(); current!= hull.end(); ++current)
+        {
+            contactPoints[id] = tr.transform(*current); ++id;
+            /* STU std::cout << "contact point 2 " << contactPoint2 << std::endl;
+            std::cout << "contact point clip " << (contactPoints[id-1]) << std::endl;
+            std::cout << "contact point avat " << *current << std::endl;*/
+        }
+    }
+    assert(*num_contact_points > 0);
+    assert(*num_contact_points <= 4);
+}
+
+
+// returns the three ids of the triangles, the second id is opposite point
+void oppositePoint(const Vec3f& dists, std::size_t* res)
+{
+    if(dists[0] * dists [1] >0)
+        {res[0] = 0; res[1] = 2; res[2] = 1;}
+    else if(dists[1] * dists [2] >0)
+        {res[0] = 1; res[1] = 0; res[2] = 2;}
+    else if(dists[0] * dists [2] >0)
+        {res[0] = 0; res[1] = 1; res[2] = 2;}
+    // if we have zero distances, find whatever point not on line
+    else
+    {
+        for(std::size_t i=0; i<3;++i)
+        {
+            if(dists[i] != 0)
+            {
+                res[0] = (i+1)%3; res[1] = i; res[2] = (i+2)%3;
+                break;
+            }
+        }
+    }
+}
+
+std::pair<FCL_REAL, FCL_REAL> lineInterval(Vec3f* tri1,const Vec3f& D, const Vec3f& o, const Vec3f& distTri1Plane2)
+{
+    Vec3f p1;
+    for(std::size_t i = 0; i < 3; ++i)
+    {
+        p1[i] = D.dot(tri1[i] - o);
+    }
+    FCL_REAL t1, t2;
+    // identify which rays intersect, by finding the point alone on the other
+    // side of the line
+    std::size_t op[3];
+    oppositePoint(distTri1Plane2,op);
+
+    std::size_t s0 = op[0], s2 = op[2], op1 = op[1];
+/* STUstd::cout << "opposite point " << op1 << " " << tri1[op1] << std::endl;
+std::cout << "NON opposite point " << s0 << " " << tri1[s0]<< std::endl;
+std::cout << "NON opposite point " << s2 << " " << tri1[s2]<< std::endl;
+std::cout << "Line 1 " << tri1[op1] << " " << tri1[s0]<< std::endl;
+std::cout << "Line 2 " << tri1[op1] << " " << tri1[s2]<< std::endl;*/
+    t1 = p1[s0] + (p1[op1] - p1[s0]) * (distTri1Plane2[s0]) / (distTri1Plane2[s0] - distTri1Plane2[op1]);
+    t2 = p1[s2] + (p1[op1] - p1[s2]) * (distTri1Plane2[s2]) / (distTri1Plane2[s2] - distTri1Plane2[op1]);
+/* STUstd::cout << "does this work " << o + D*t1 << std::endl;
+std::cout << "does this work " << o + D*t2 << std::endl;*/
+    if(t1 < t2)
+        return std::make_pair(t1,t2);
+    else
+        return std::make_pair(t2,t1);
+}
+
+Vec3f computeIntersectionPoint(const Vec3f& n1, const Vec3f& n2,
+                               const FCL_REAL& d1, const FCL_REAL& d2, const fcl::Vec3f& D,
+                               const fcl::Vec3f* tri1, const fcl::Vec3f* tri2)
+{
+// if D has two null component, any value for those two components is valid ?
+    Vec3f res;
+    // find solution by setting z = 0
+    if(D[2] != 0)
+    {
+        res[2] = 0;
+        if(n1[0] == 0)
+        {
+            assert(n2[0]!=0);
+            res[1] = ((n1[0]*d2) / n2[0] - d1) / (n1[1] - (n1[0] * n2[1])/(n2[0]));
+            res[0] = -(n2[1]*res[1] + d2)/n2[0];
+        }
+        else
+        {
+            assert(n1[0]!=0);
+            res[1] = ((n2[0]*d1) / n1[0] - d2) / (n2[1] - (n2[0] * n1[1])/(n1[0]));
+            res[0] = -(n1[1]*res[1] + d1)/n1[0];
+        }
+    }
+    // set y = 0
+    else if(D[1] != 0)
+    {
+        res[1] = 0;        
+        if(n1[0] == 0)
+        {
+            assert(n2[0]!=0);
+            res[2] = ((n1[0]*d2) / n2[0] - d1) / (n1[2] - (n1[0] * n2[2])/(n2[0]));
+            res[0] = -(n2[2]*res[2] + d2)/n2[0];
+        }
+        else
+        {
+            assert(n1[0]!=0);
+            res[2] = ((n2[0]*d1) / n1[0] - d2) / (n2[2] - (n2[0] * n1[2])/(n1[0]));
+            res[0] = -(n1[2]*res[2] + d1)/n1[0];
+        }
+    }
+    else // y and z are constrained
+    {
+        res[0] = 0;
+
+        if(n1[1] == 0)
+        {
+            assert(n2[1]!=0);
+            res[2] = ((n1[1]*d2) / n2[1] - d1) / (n1[2] - (n1[1] * n2[2])/(n2[1]));
+            res[1] = -(n2[2]*res[2]+d2)/n2[1];
+        }
+        else
+        {
+            assert(n1[1]!=0);
+            res[2] = ((n2[1]*d1) / n1[1] - d2) / (n2[2] - (n2[1] * n1[2])/(n1[1]));
+            res[1] = -(n1[2]*res[2]+d1)/n1[1];
+        }
+    }
+/* STUstd::cout << "intersection point " << res << std::endl;
+for(int i=0; i<3; ++i)
+{
+    std::cout << "tri1 point " << tri1[i] << std::endl;
+}
+for(int i=0; i<3; ++i)
+{
+    std::cout << "tri2 point " << tri2[i] << std::endl;
+}*/
+    return res;
+}
+
+void computeTriangleIntersection(Vec3f* tri1, Vec3f* tri2, const Vec3f& n1, const Vec3f& n2,
+                                            const FCL_REAL& t1, const FCL_REAL& t2,
+                                            Vec3f* contact_points,
+                                            unsigned int* num_contact_points)
+{
+    const FCL_REAL d1 = -t1, d2 = -t2;
+    Vec3f D = n1.cross(n2);
+    D.normalize();
+    // find origin of line
+    // signed distance of vertices of tri1 to plane of tri2  is computed
+    // by inserting them into the plane equation
+    // handling cases where a triangle vertex is exactly on a surface
+    bool intersect;
+    Vec3f o; // point on plane
+    bool pointOnPlaneFound(false);
+    Vec3f distTri1Plane2 = distanceTriangleVerticesToPlane(tri1, n2, d2, intersect, o, pointOnPlaneFound);
+    Vec3f distTri2Plane1 = distanceTriangleVerticesToPlane(tri2, n1, d1, intersect, o, pointOnPlaneFound);
+    /* STUstd::cout <<  "distTri1Plane2" << distTri1Plane2 << std::endl;
+    std::cout <<  "distTri2Plane1" << distTri2Plane1 << std::endl;
+    std::cout <<  "n1" << n1 << std::endl;
+    std::cout <<  "n2" << n2 << std::endl;
+    std::cout << " D" << D << std::endl;*/
+    if(!intersect)
+    {
+        //coplanar case ?
+        if(distTri1Plane2.length() == 0 || distTri1Plane2.length() == 0)
+        {
+            clipTriangles(tri1, tri2,n1,num_contact_points,contact_points);
+        }
+        else
+        {
+            *num_contact_points = 0;
+        }
+        return;
+    }
+    if(!pointOnPlaneFound) o = computeIntersectionPoint(n1, n2, d1, d2, D, tri1, tri2);
+    std::pair<FCL_REAL, FCL_REAL> int1 = lineInterval(tri1,D,o,distTri1Plane2);
+    std::pair<FCL_REAL, FCL_REAL> int2 = lineInterval(tri2,D,o,distTri2Plane1);
+    /* STUstd::cout << "o" << ";" << o << std::endl;
+    std::cout << "distance" << ";" << distTri1Plane2 << std::endl;
+    std::cout << "distance2" << ";" << distTri2Plane1 << std::endl;
+    std::cout << int1.first << ";" << int1.second << std::endl;
+    std::cout << int2.first << ";" << int2.second << std::endl;*/
+    /*if(std::abs (int1.second - int2.first ) <= epsilon)
+    {
+        *num_contact_points =1;
+        contact_points[0] = o + D*int1.second;
+    }*/
+    //else
+    {
+        assert((int1.first - int2.second) <= epsilon && (int2.first - int1.second) <= epsilon);
+        //intersection interval is given by
+        FCL_REAL t_min = std::max(int1.first, int2.first);
+        FCL_REAL t_max = std::min(int1.second, int2.second);
+        *num_contact_points =2;
+        contact_points[0] = o + D*t_min;
+        contact_points[1] = o + D*t_max;
+        /* STUstd::cout << "cpoint 0" << contact_points[0] << std::endl;
+        std::cout << "cpoint 1" << contact_points[1] << std::endl;*/
+    }
+}
+}
+
 bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f& P3,
                                    const Vec3f& Q1, const Vec3f& Q2, const Vec3f& Q3,
                                    Vec3f* contact_points,
@@ -880,6 +1304,7 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
 
   if(contact_points && num_contact_points && penetration_depth && normal)
   {
+/* STUstd::cout << "triangles " << P1 << P2 << P3 << Q1 << Q2 << Q3 << std::endl;*/
     Vec3f n1, n2;
     FCL_REAL t1, t2;
     buildTrianglePlane(P1, P2, P3, &n1, &t1);
@@ -900,28 +1325,32 @@ bool Intersect::intersect_Triangle(const Vec3f& P1, const Vec3f& P2, const Vec3f
 
     if(penetration_depth1 > penetration_depth2)
     {
-      *num_contact_points = std::min(num_deepest_points2, (unsigned int)2);
+      /**num_contact_points = std::min(num_deepest_points2, (unsigned int)2);
       for(unsigned int i = 0; i < *num_contact_points; ++i)
       {
+        std::cout << "c_point 1" << deepest_points2[i] << std::endl;
         contact_points[i] = deepest_points2[i];
-      }
+      }*/
 
       *normal = n1;
       *penetration_depth = penetration_depth2;
     }
     else
     {
+      /*
       *num_contact_points = std::min(num_deepest_points1, (unsigned int)2);
       for(unsigned int i = 0; i < *num_contact_points; ++i)
       {
+        std::cout << "c_point 2 " << deepest_points1[i] << std::endl;
         contact_points[i] = deepest_points1[i];
-      }
+      }*/
 
       *normal = -n2;
       *penetration_depth = penetration_depth1;
     }
+    computeTriangleIntersection(P, Q, n1, n2, t1, t2,contact_points, num_contact_points);
+    assert(*num_contact_points > 0);
   }
-
   return true;
 }
 #endif
@@ -964,6 +1393,7 @@ void Intersect::computeDeepestPoints(Vec3f* clipped_points, unsigned int num_cli
   *penetration_depth = max_depth;
   *num_deepest_points = num_deepest_points_;
 }
+
 
 void Intersect::clipTriangleByTriangleAndEdgePlanes(const Vec3f& v1, const Vec3f& v2, const Vec3f& v3,
                                                     const Vec3f& t1, const Vec3f& t2, const Vec3f& t3,
