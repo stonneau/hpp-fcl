@@ -57,7 +57,6 @@ namespace fcl {
    const GJKSolver_indep*, const DistanceRequest&,
    DistanceResult& result)
   {
-    FCL_REAL epsilon = 1e-7;
     const Sphere* s1 = static_cast <const Sphere*> (o1);
     const Sphere* s2 = static_cast <const Sphere*> (o2);
 
@@ -72,7 +71,7 @@ namespace fcl {
     result.b1 = result.b2 = -1;
     Vec3f c1c2 = center2 - center1;
     FCL_REAL dist = c1c2.norm ();
-    Vec3f unit (dist > epsilon ? c1c2/dist : Vec3f (0,0,0));
+    Vec3f unit = c1c2.normalized();
     FCL_REAL penetrationDepth;
     penetrationDepth = r1 + r2 - dist;
     bool collision = (penetrationDepth >= 0);
@@ -99,7 +98,6 @@ namespace fcl {
    const GJKSolver_indep*, const CollisionRequest& request,
    CollisionResult& result)
   {
-    FCL_REAL epsilon = 1e-7;
     const Sphere* s1 = static_cast <const Sphere*> (o1);
     const Sphere* s2 = static_cast <const Sphere*> (o2);
 
@@ -111,8 +109,8 @@ namespace fcl {
     FCL_REAL margin (request.security_margin);
 
     Vec3f c1c2 = center2 - center1;
+    Vec3f unit = c1c2.normalized();
     FCL_REAL dist = c1c2.norm ();
-    Vec3f unit (dist > epsilon ? c1c2/dist : Vec3f (0,0,0));
     FCL_REAL penetrationDepth;
     // Unlike in distance computation, we consider the security margin.
     penetrationDepth = r1 + r2 + margin - dist;
