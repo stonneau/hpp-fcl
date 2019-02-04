@@ -57,6 +57,42 @@ typedef Eigen::Matrix<FCL_REAL, 6, 1> vector6_t;
 typedef Eigen::Matrix<FCL_REAL, 4, 1> vector4_t;
 typedef Eigen::Matrix<FCL_REAL, Eigen::Dynamic, Eigen::Dynamic> matrix_t;
 
+
+
+BOOST_AUTO_TEST_CASE(triangleDistanceAssertionFails)
+{
+    Vec3f a1,b1,c1,a2,b2,c2;
+
+    a1 << -0.8027043342590332 , -0.30276307463645935 , -0.4372950792312622;
+    b1 << -0.8027043342590332 , 0.30276307463645935  ,-0.4372950792312622 ;
+    c1 << 0.8027043342590332  , 0.30276307463645935  ,-0.4372950792312622 ;
+
+    a2 << -0.224713996052742   , -0.7417119741439819 , 0.19999997317790985  ;
+    b2 <<  -0.5247139930725098 , -0.7417119741439819 , 0.19999997317790985  ;
+    c2 << -0.224713996052742   , -0.7417119741439819 ,  0.09999997168779373 ;
+
+    fcl::Transform3f tf1, tf2;
+    Matrix3f R; Vec3f T;
+    R <<  0.9657787025454787,      0.09400415350535746,   0.24173273843919627,
+             -0.06713698817647556,    0.9908494114820345,    -0.11709000206805695,
+             -0.25052768814676646,    0.09685382227587608,  0.9632524147814993;
+
+    T << -0.13491177905469953, -1,  0.6000449621843792;
+    tf1.setRotation(R); tf1.setTranslation(T);
+
+    Vec3f p1, p2, normal;
+    FCL_REAL dist;
+    TriangleP s1(a1,b1,c1);
+    TriangleP s2(a2,b2,c2);
+
+    GJKSolver_indep solver;
+    bool succes = solver.shapeDistance<TriangleP, TriangleP>
+    (s1,tf1, s2, tf2, dist, p1, p2, normal);
+    bool tg;
+
+}
+
+
 struct Result
 {
   bool collision;
